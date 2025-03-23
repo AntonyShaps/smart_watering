@@ -11,6 +11,7 @@ db/pgadmin_data/*.log
 __pycache__/
 *.py[cod]
 *.pyo
+**/__pycache__/
 
 # Jupyter notebook checkpoints
 .ipynb_checkpoints/

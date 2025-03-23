@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  pgdatabase:
+    image: postgres:13
+    container_name: pgdatabase
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=sensors_data
+    volumes:
+      - ./db/data:/var/lib/postgresql/data:rw
+    ports:
+      - "5432:5432"
+    networks:
+      - smart_watering
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
+      - PGADMIN_DEFAULT_PASSWORD=root
+    volumes:
+      - pgadmin_config:/var/lib/pgadmin        
+      - ./db/pgadmin_data/servers.json:/pgadmin4/servers.json:ro 
+    ports:
+      - "8080:80"
+    networks:
+      - smart_watering
+
+networks:
+  smart_watering:
+    name: smart_watering
+
+volumes:
+  pgadmin_config:  

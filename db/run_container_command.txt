@@ -1,0 +1,15 @@
+#run postgress
+docker run -it \
+  -e POSTGRES_USER="root" \
+  -e POSTGRES_PASSWORD="root" \
+  -e POSTGRES_DB="sensors_data" \
+  -v $(pwd)/db/data:/var/lib/postgresql/data \
+  -p 5432:5432 \
+  postgres:13
+
+#run pgAdmin
+docker run -it \
+  -e PGADMIN_DEFAULT_EMAIL="admin@admin.com" \
+  -e PGADMIN_DEFAULT_PASSWORD="root" \
+  -p 8080:80 \
+  dpage/pgadmin4

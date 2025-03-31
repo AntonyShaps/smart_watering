@@ -9,7 +9,7 @@ conn = psycopg2.connect(
     dbname="sensors_data",
     user="root",
     password="root",
-    host="localhost",
+    host="pgdatabase",
     port="5432"
 )
 cursor = conn.cursor()

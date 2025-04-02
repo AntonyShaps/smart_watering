@@ -32,3 +32,5 @@ Thumbs.db
 
 # Docker volumes or build cache (optional, only if used)
 volumes/
+# venv
+venv/

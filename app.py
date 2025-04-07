@@ -276,10 +276,10 @@ with tab2:
     # Show most recent values
     latest = df.sort_index(ascending=False).iloc[0]
     st.markdown(f"**Last Reading — {latest.name}**")
-    st.markdown(f"🌡️ Temperature: {latest['temperature']} °C")
-    st.markdown(f"💧 Moisture: {latest['soil_moisture']} %")
-    st.markdown(f"🌬️ Humidity: {latest['humidity']} %")
-    st.markdown(f"🧪 CO₂: {latest['co2']} ppm")
+    st.markdown(f"Temperature: {latest['temperature']} °C")
+    st.markdown(f"Moisture: {latest['soil_moisture']} %")
+    st.markdown(f"Humidity: {latest['humidity']} %")
+    st.markdown(f"CO₂: {latest['co2']} ppm")
 
   # Add Plant Button
     with st.expander("➕ Add a Plant", expanded=False):

@@ -254,7 +254,9 @@ def fetch_sensor_df(limit=50):
     # ✅ Merge all dataframes on timestamp
     from functools import reduce
     df_final = reduce(lambda left, right: pd.merge(left, right, on="timestamp", how="outer"), dfs)
-    return df_final.sort_values("timestamp")
+    #return df_final.sort_values("timestamp")
+    return df_final.sort_values("timestamp").tail(300)  # show last 300 readings
+
 
 with tab2:
     st.title("🌿 My Plants")
@@ -269,6 +271,9 @@ with tab2:
         available_cols = [col for col in ["co2", "humidity", "soil_moisture", "temperature"] if col in df.columns]
 
         if available_cols:
+            # Drop outliers above 5000 ppm
+            if "co2" in df.columns:
+                df = df[df["co2"] < 5000]
             st.line_chart(df[available_cols])
         else:
             st.warning("No valid sensor readings found.")

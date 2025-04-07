@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import datetime
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
 # ------------------------------
 # Fetch weather data from Open-Meteo
@@ -255,26 +256,76 @@ with tab2:
     st.markdown(f"Humidity: {latest['humidity']} %")
     st.markdown(f"CO₂: {latest['co2']} ppm")
 
+    with st.sidebar.expander("Live Sensor Gauges", expanded=True):
+        if not df.empty:
+            latest = df.sort_index(ascending=False).iloc[0]
+            for label, value, unit, range_vals, steps, color in [
+                ("Humidity (%)", latest["humidity"], "%", [0, 100], [
+                    {"range": [0, 30], "color": "lightcoral"},
+                    {"range": [30, 60], "color": "lightgreen"},
+                    {"range": [60, 100], "color": "khaki"}], "dodgerblue"),
+                ("Temperature (°C)", latest["temperature"], "°C", [-5, 40], [
+                    {"range": [-5, 5], "color": "#b0e0e6"},
+                    {"range": [5, 25], "color": "#90ee90"},
+                    {"range": [25, 40], "color": "#ffcccb"}], "orangered"),
+                ("CO₂ (ppm)", latest["co2"], "ppm", [0, 5000], [
+                    {"range": [0, 800], "color": "lightgreen"},
+                    {"range": [800, 1200], "color": "gold"},
+                    {"range": [1200, 5000], "color": "lightcoral"}], "darkred"),
+                ("Soil Moisture (%)", latest["soil_moisture"], "%", [0, 100], [
+                    {"range": [0, 20], "color": "lightcoral"},
+                    {"range": [20, 60], "color": "lightgreen"},
+                    {"range": [60, 100], "color": "khaki"}], "seagreen")
+            ]:
+                fig = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=value,
+                    title={"text": label},
+                    gauge={
+                        "axis": {"range": range_vals},
+                        "bar": {"color": color},
+                        "steps": steps
+                    }
+                ))
+                st.plotly_chart(fig, use_container_width=True)
+            
   # Add Plant Button
-    with st.expander("➕ Add a Plant", expanded=False):
+    with st.expander("Add a Plant", expanded=False):
         plant_name = st.text_input("Plant Name")
-        pot_size = st.selectbox("Pot Size", ["Small", "Medium", "Large"])
+        pot_size = st.selectbox("Pot Size", ["Small (500ml)", "Medium (1L)", "Large (2L)"])
         orientation = st.selectbox("Facing Direction", ["North", "East", "South", "West"])
         plant_type = st.selectbox("Plant Environment", ["Indoor", "Outdoor", "Desert", "Tropical"])
         robustness = st.slider("Plant Robustness (1-10)", 1, 10)
         time_of_day = st.selectbox("Time of Day", ["Morning", "Afternoon", "Evening", "Night"])
         last_watered = st.date_input("Last Watered", datetime.date.today())
 
-        # ✅ Get current sensor moisture reading (if available)
+        # Suggest species examples
+        suggestions = {
+            "Indoor": ["Peace Lily", "Spider Plant", "ZZ Plant"],
+            "Outdoor": ["Lavender", "Basil", "Geranium"],
+            "Desert": ["Aloe Vera", "Cactus", "Echeveria"],
+            "Tropical": ["Bird of Paradise", "Calathea", "Philodendron"]
+        }
+        st.markdown(f"**Suggested Species:** {', '.join(suggestions[plant_type])}")
+
+        # Determine light exposure based on orientation
+        sun_exposure = {
+            "North": "Low light",
+            "East": "Morning light",
+            "South": "Full sun",
+            "West": "Afternoon sun"
+        }[orientation]
+
+        # Get current sensor moisture reading
         if not df.empty and "soil_moisture" in df.columns:
             current_moisture = df.sort_index(ascending=False)["soil_moisture"].iloc[0]
         else:
             current_moisture = st.slider("Current Soil Moisture (%)", 0, 100)
 
-        if st.button("🌱 Submit Plant"):
+        if st.button("Submit Plant"):
             st.success(f"{plant_name} added successfully!")
 
-            # ✅ Fetch Open-Meteo forecast for next 12 hours
+            # Forecast
             forecast = get_hourly_weather()
             future_df = pd.DataFrame(forecast)
             future_df["time"] = pd.to_datetime(future_df["time"])
@@ -287,37 +338,39 @@ with tab2:
                 "soil_moisture_3_to_9cm"
             ]].mean(axis=1).mean()
 
-            # Smarter logic combining current + forecast
-            # Improved watering + plant safety logic
+            # Determine watering volume by pot size
+            volume_ml = {
+                "Small (500ml)": 100,
+                "Medium (1L)": 200,
+                "Large (2L)": 400
+            }[pot_size]
+
+            # Smart logic
             if current_moisture < 30:
                 if avg_forecast_temp < 5:
-                    water_advice = "Soil is very dry and it's very cold. Water lightly and move plant indoors if possible."
+                    water_advice = f"Soil is very dry and cold. Water lightly (~{int(volume_ml/2)}ml) and bring indoors."
                 elif avg_forecast_temp < 10:
-                    water_advice = "Soil is dry, and it's cold. Water lightly and monitor closely."
+                    water_advice = f"Soil is dry and chilly. Light watering (~{int(volume_ml/2)}ml) advised."
                 elif avg_forecast_moisture < 0.25 and avg_forecast_temp > 22:
-                    water_advice = "Definitely water – soil is dry and forecast is hot and dry."
+                    water_advice = f"Very dry weather coming. Water fully (~{volume_ml}ml)."
                 else:
-                    water_advice = "Soil is dry – consider watering soon."
-
+                    water_advice = f"Soil is dry – consider watering (~{int(volume_ml*0.75)}ml)."
             elif current_moisture > 70:
-                water_advice = "Do not water – soil is already saturated."
-
+                water_advice = "Soil is saturated. Do not water."
             elif avg_forecast_moisture < 0.2 and avg_forecast_temp > 25:
-                water_advice = "Monitor closely – forecast shows hot and dry conditions."
-
+                water_advice = "Forecast is hot and dry. Watch closely, light watering may help."
             elif 30 <= current_moisture <= 40:
-                water_advice = "Moisture is slightly low – you may want to water lightly."
-
+                water_advice = f"Slightly dry – optional light watering (~{int(volume_ml/3)}ml)."
             else:
                 water_advice = "Moisture levels are fine. No watering needed."
 
             if avg_forecast_temp < 5:
-                location_advice = "It's very cold outside. Move the plant indoors if it's sensitive to frost."
+                location_advice = "It's very cold. Consider keeping the plant inside."
             else:
-                location_advice = "Outdoor conditions are acceptable."
+                location_advice = f"{sun_exposure} conditions expected. Monitor based on plant type."
 
-            # 🌿 Show Recommendation
-            st.markdown("### 🌿 Smart Recommendation")
+            # Display recommendation
+            st.markdown("### Smart Recommendation")
             st.markdown(f"**Soil Moisture Now:** {current_moisture:.1f}%")
             st.markdown(f"**Avg Forecast Temp (12h):** {avg_forecast_temp:.1f}°C")
             st.markdown(f"**Forecast Soil Moisture:** {avg_forecast_moisture:.2f} m³/m³")

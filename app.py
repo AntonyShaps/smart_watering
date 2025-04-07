@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 import plotly.express as px
 import datetime
+import matplotlib.pyplot as plt
 
 # ------------------------------
 # Fetch weather data from Open-Meteo
@@ -218,13 +219,67 @@ with tab1:
     else:
         st.error(" Failed to fetch any soil moisture data.")
 
-
 # ------------------------------
 # TAB 2: MY PLANTS (Empty)
 # ------------------------------
+
+SENSOR_ENDPOINTS = {
+    "co2": "http://104.248.47.104:8000/co2",
+    "humidity": "http://104.248.47.104:8000/humidity",
+    "soil_moisture": "http://104.248.47.104:8000/soil_moisture",
+    "temperature": "http://104.248.47.104:8000/temperature"
+}
+
+@st.cache_data(ttl=200)
+def fetch_sensor_df(limit=50):
+    dfs = []
+
+    for key, url in SENSOR_ENDPOINTS.items():
+        try:
+            r = requests.get(url, timeout=5)
+            r.raise_for_status()
+            data = r.json()
+
+            df = pd.DataFrame(data)
+            df = df[["timestamp", key]]  # only keep timestamp + this variable
+            df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+            dfs.append(df)
+
+        except Exception as e:
+            st.warning(f"⚠️ Failed to fetch {key} from {url}: {e}")
+
+    if not dfs:
+        return pd.DataFrame()  # nothing fetched
+
+    # ✅ Merge all dataframes on timestamp
+    from functools import reduce
+    df_final = reduce(lambda left, right: pd.merge(left, right, on="timestamp", how="outer"), dfs)
+    return df_final.sort_values("timestamp")
+
 with tab2:
     st.title("🌿 My Plants")
     st.markdown("This section is currently empty. Add your plant monitoring tools here later.")
+
+    df = fetch_sensor_df()
+
+    if df.empty:
+        st.info("Waiting for sensor data from endpoints...")
+    else:
+        df = df.set_index("timestamp")
+        available_cols = [col for col in ["co2", "humidity", "soil_moisture", "temperature"] if col in df.columns]
+
+        if available_cols:
+            st.line_chart(df[available_cols])
+        else:
+            st.warning("No valid sensor readings found.")
+
+    # Show most recent values
+    latest = df.sort_index(ascending=False).iloc[0]
+    st.markdown(f"**Last Reading — {latest.name}**")
+    st.markdown(f"🌡️ Temperature: {latest['temperature']} °C")
+    st.markdown(f"💧 Moisture: {latest['soil_moisture']} %")
+    st.markdown(f"🌬️ Humidity: {latest['humidity']} %")
+    st.markdown(f"🧪 CO₂: {latest['co2']} ppm")
 
   # Add Plant Button
     with st.expander("➕ Add a Plant", expanded=False):
@@ -259,16 +314,3 @@ with tab2:
             st.markdown(f"**Location Advice:** {location_advice}")
             st.markdown(f"**Watering Advice:** {water_advice}")
             st.markdown(f"**Soil Moisture Level:** {moisture_level}")
-
-            # Example of plotting sensor calibration
-            st.markdown("### 🌡️ Soil Moisture Calibration Chart")
-            fig, ax = plt.subplots()
-            days = list(range(1, 8))
-            simulated_moisture = [random.randint(30, 90) for _ in days]
-            ax.plot(days, simulated_moisture, marker='o')
-            ax.axhline(y=soil_moisture, color='r', linestyle='--', label='Current')
-            ax.set_title("Soil Moisture Over Past Week")
-            ax.set_xlabel("Days Ago")
-            ax.set_ylabel("Moisture (%)")
-            ax.legend()
-            st.pyplot(fig)

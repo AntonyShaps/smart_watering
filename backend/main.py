@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Request
 from datetime import datetime
 import psycopg2
+import pandas as pd
+import requests
 
 app = FastAPI()
 

@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import plotly.express as px
+import datetime
 
 # ------------------------------
 # Fetch weather data from Open-Meteo
@@ -224,3 +225,50 @@ with tab1:
 with tab2:
     st.title("🌿 My Plants")
     st.markdown("This section is currently empty. Add your plant monitoring tools here later.")
+
+  # Add Plant Button
+    with st.expander("➕ Add a Plant", expanded=False):
+        plant_name = st.text_input("Plant Name")
+        pot_size = st.selectbox("Pot Size", ["Small", "Medium", "Large"])
+        orientation = st.selectbox("Facing Direction", ["North", "East", "South", "West"])
+        plant_type = st.selectbox("Plant Environment", ["Indoor", "Outdoor", "Desert", "Tropical"])
+        robustness = st.slider("Plant Robustness (1-10)", 1, 10)
+        time_of_day = st.selectbox("Time of Day", ["Morning", "Afternoon", "Evening", "Night"])
+        last_watered = st.date_input("Last Watered", datetime.date.today())
+        soil_moisture = st.slider("Current Soil Moisture (%)", 0, 100)
+
+        if st.button("🌱 Submit Plant"):
+            st.success(f"{plant_name} added successfully!")
+
+            # Dummy logic for recommendation
+            moisture_level = "High" if soil_moisture > 60 else "Low"
+            if soil_moisture > 70:
+                water_advice = "Do not water now."
+            elif 40 < soil_moisture <= 70:
+                water_advice = "Water lightly."
+            else:
+                water_advice = "Needs watering!"
+
+            if plant_type in ["Desert"]:
+                water_advice = "Minimal water needed - desert plant!"
+
+            location_advice = "Keep outside" if orientation in ["South", "West"] and plant_type != "Indoor" else "Keep inside"
+
+            # Display Recommendation
+            st.markdown("### 🌿 Recommendation")
+            st.markdown(f"**Location Advice:** {location_advice}")
+            st.markdown(f"**Watering Advice:** {water_advice}")
+            st.markdown(f"**Soil Moisture Level:** {moisture_level}")
+
+            # Example of plotting sensor calibration
+            st.markdown("### 🌡️ Soil Moisture Calibration Chart")
+            fig, ax = plt.subplots()
+            days = list(range(1, 8))
+            simulated_moisture = [random.randint(30, 90) for _ in days]
+            ax.plot(days, simulated_moisture, marker='o')
+            ax.axhline(y=soil_moisture, color='r', linestyle='--', label='Current')
+            ax.set_title("Soil Moisture Over Past Week")
+            ax.set_xlabel("Days Ago")
+            ax.set_ylabel("Moisture (%)")
+            ax.legend()
+            st.pyplot(fig)

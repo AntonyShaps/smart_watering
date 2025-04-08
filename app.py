@@ -337,23 +337,54 @@ with tab2:
             "South": 1.2
         }
 
+        def estimate_moisture_change(forecast_list, current, days, rain_mm, orientation="South"):
+            values = [v * 100 for v in forecast_list]
+            slope = (values[-1] - values[0]) / len(values)
+            daily_change = slope * 24  # extrapolate hourly slope to daily
+
+            orientation_mod = {
+                "North": 0.9,
+                "East": 1.0,
+                "West": 1.1,
+                "South": 1.2
+            }.get(orientation, 1.0)
+
+            daily_change *= orientation_mod
+            rain_gain = rain_mm * 0.5
+
+            projected = current + daily_change * days + rain_gain
+            projected = max(0, min(projected, 100))
+            return projected, daily_change
+
+
+        
         for plant in st.session_state.plant_list:
             target = type_targets.get(plant["plant_type"], 60)
             current = plant.get("current_moisture", avg_soil_moisture)
             robustness = plant.get("robustness", 5)
             buffer = (10 - robustness) * 0.5
 
-            # Estimate moisture growth from forecasted rain and future soil moisture
-            future_soil_avg = forecast_3d[[
-                "soil_moisture_0_to_1cm",
-                "soil_moisture_1_to_3cm",
-                "soil_moisture_3_to_9cm"]].mean(axis=1).mean()
+            # Select forecast list for shallow soil (e.g., 0–1 cm)
+            forecast_soil = forecast_3d[["soil_moisture_0_to_1cm", "soil_moisture_1_to_3cm"]].mean(axis=1).tolist()
+            projected_moisture, daily_change = estimate_moisture_change(
+                forecast_list=forecast_soil,
+                current=current,
+                days=5,
+                rain_mm=rain_total,
+                orientation=plant["orientation"]
+            )
 
-            gain_per_day = (future_soil_avg * 100 - current) / forecast_days
-            gain_per_day *= orientation_modifier.get(plant["orientation"], 1.0)
-            rain_gain = rain_total * 0.5  # heuristically 0.5% per mm rain
+            # Estimate moisture growth from forecasted rain and future soil moisture
+            #future_soil_avg = forecast_3d[[
+              #  "soil_moisture_0_to_1cm",
+              #  "soil_moisture_1_to_3cm",
+              #  "soil_moisture_3_to_9cm"]].mean(axis=1).mean()
+
+          #  gain_per_day = (future_soil_avg * 100 - current) / forecast_days
+          #  gain_per_day *= orientation_modifier.get(plant["orientation"], 1.0)
+          #  rain_gain = rain_total * 0.5  # heuristically 0.5% per mm rain
             #projected_moisture = max(0, min(100, current + gain_per_day * 5 + (rain_gain if rain_total > 0 else 0)))
-            projected_moisture = current + gain_per_day * 5 + (rain_gain if rain_total > 0 else 0)
+           # projected_moisture = current + gain_per_day * 5 + (rain_gain if rain_total > 0 else 0)
 
            # if current < target - (15 + buffer):
               #  freq = "2x over the next 5 days"
@@ -384,7 +415,7 @@ with tab2:
             plan = f"Next 3-day avg temp: {avg_temp_3d:.1f}°C, humidity: {avg_humidity_3d:.1f}%. " \
                    f"Current soil moisture for {plant['name']} is {current:.1f}%. " \
                    f"Target for {plant['plant_type']} plants is ~{target}%. " \
-                   f"Projected in 5 days: {projected_moisture:.1f}%. " \
+                   f"Projected in 5 days: {projected_moisture:.1f}% (≈ {daily_change:+.2f}%/day). " \
                    f"Suggest watering {freq} ({reason})."
 
             #plan = f"Next 3-day avg temp: {avg_temp_3d:.1f}°C, humidity: {avg_humidity_3d:.1f}%. " \

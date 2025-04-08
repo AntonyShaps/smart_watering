@@ -200,7 +200,7 @@ SENSOR_ENDPOINTS = {
     "temperature": "http://104.248.47.104:8000/temperature"
 }
 
-@st.cache_data(ttl=200)
+@st.cache_data(ttl=400)
 def fetch_sensor_df(limit=50):
     dfs = []
 
@@ -230,7 +230,7 @@ def fetch_sensor_df(limit=50):
 
 with tab2:
     st.title("🌿 My Plants")
-    st.markdown("This section is currently empty. Add your plant monitoring tools here later.")
+    st.markdown("This section for live plant monitoring tools")
 
     df = fetch_sensor_df()
 
@@ -247,6 +247,9 @@ with tab2:
             st.line_chart(df[available_cols])
         else:
             st.warning("No valid sensor readings found.")
+
+    if "plant_list" not in st.session_state:
+        st.session_state.plant_list = []
 
     # Show most recent values
     latest = df.sort_index(ascending=False).iloc[0]
@@ -288,7 +291,64 @@ with tab2:
                     }
                 ))
                 st.plotly_chart(fig, use_container_width=True)
-            
+    
+    with st.sidebar.expander("My Plants", expanded=False):
+        if st.session_state.plant_list:
+            for i, plant in enumerate(st.session_state.plant_list):
+                st.markdown(f"**{plant['name']}**")
+                st.markdown(f"- Type: {plant['plant_type']} ({plant['pot_size']})")
+                st.markdown(f"- Facing: {plant['orientation']}")
+                st.markdown(f"- Last Watered: {plant['last_watered']}")
+                st.markdown(f"- Days Since Watered: {plant['days_since_watered']} days")
+                st.markdown(f"- Soil Moisture: {plant['current_moisture']}%")
+                st.markdown(f"- Prognosed Moisture: {plant['prognosed_moisture']}%")
+                st.markdown(f"- Predicted Next Watering: {plant['predicted_next_watering']}")
+                st.markdown(f"- Watering Plan: {plant.get('watering_plan', 'N/A')}")
+                #st.markdown(f"- Advice: {plant['water_advice']}")
+                st.markdown("---")
+        else:
+            st.info("No plants added yet.")
+
+    # Predictive Watering Plan Generator
+    forecast = get_hourly_weather()
+    if forecast and "time" in forecast:
+        future_df = pd.DataFrame(forecast)
+        future_df["time"] = pd.to_datetime(future_df["time"])
+        forecast_3d = future_df.head(72)  # 3 days hourly = 72 rows
+
+        avg_temp_3d = forecast_3d["temperature_2m"].mean()
+        avg_humidity_3d = df["humidity"].mean() if "humidity" in df.columns else 50
+        avg_soil_moisture = df["soil_moisture"].mean() if "soil_moisture" in df.columns else 30
+
+        # Define dynamic moisture targets based on plant types
+        type_targets = {
+            "Indoor": 55,
+            "Outdoor": 60,
+            "Desert": 35,
+            "Tropical": 70
+        }
+
+        for plant in st.session_state.plant_list:
+            target = type_targets.get(plant["plant_type"], 60)
+            current = plant.get("current_moisture", avg_soil_moisture)
+
+            if current < target - 20:
+                freq = "2x over the next 5 days"
+            elif current < target - 10:
+                freq = "1x in the next 4 days"
+            else:
+                freq = "1x next week"
+
+            plan = f"Next 3-day avg temp: {avg_temp_3d:.1f}°C, humidity: {avg_humidity_3d:.1f}%. " \
+                   f"Current soil moisture for {plant['name']} is {current:.1f}%. " \
+                   f"Target for {plant['plant_type']} plants is ~{target}%. " \
+                   f"Suggest watering {freq}."
+
+            plant["watering_plan"] = plan
+
+        st.markdown("### Predictive Watering Forecast")
+        st.info("Personalized watering plans updated for each plant based on latest sensor data and forecast.")
+     
   # Add Plant Button
     with st.expander("Add a Plant", expanded=False):
         plant_name = st.text_input("Plant Name")
@@ -298,6 +358,7 @@ with tab2:
         robustness = st.slider("Plant Robustness (1-10)", 1, 10)
         time_of_day = st.selectbox("Time of Day", ["Morning", "Afternoon", "Evening", "Night"])
         last_watered = st.date_input("Last Watered", datetime.date.today())
+        days_since_watered = (datetime.date.today() - last_watered).days
 
         # Suggest species examples
         suggestions = {
@@ -322,8 +383,35 @@ with tab2:
         else:
             current_moisture = st.slider("Current Soil Moisture (%)", 0, 100)
 
+         # Determine watering volume by pot size
+        volume_ml = {
+                "Small (500ml)": 100,
+                "Medium (1L)": 200,
+                "Large (2L)": 400
+        }[pot_size]
+        prognosed_moisture = min(current_moisture + volume_ml * 0.05, 100)
+
         if st.button("Submit Plant"):
             st.success(f"{plant_name} added successfully!")
+            
+            plant_entry = {
+                "name": plant_name,
+                "pot_size": pot_size,
+                "orientation": orientation,
+                "plant_type": plant_type,
+                "robustness": robustness,
+                "time_of_day": time_of_day,
+                "last_watered": str(last_watered),
+                "species_suggestion": suggestions[plant_type],
+                "sun_exposure": sun_exposure,
+                "current_moisture": current_moisture,
+                "added_at": datetime.datetime.now().isoformat(),
+                "days_since_watered": days_since_watered,
+                "prognosed_moisture": round(prognosed_moisture, 1),
+                #"water_advice": water_advice
+
+            }
+            st.session_state.plant_list.append(plant_entry)
 
             # Forecast
             forecast = get_hourly_weather()
@@ -338,15 +426,30 @@ with tab2:
                 "soil_moisture_3_to_9cm"
             ]].mean(axis=1).mean()
 
+            # Predictive watering logic
+            # Estimate decay rate based on temp & humidity
+            decay_factor = (avg_forecast_temp / 30) * (1 - latest["humidity"] / 100)
+            daily_loss = decay_factor * 5  # moisture % lost per day
+            days_until_dry = max(0, (current_moisture - 30) / daily_loss) if daily_loss > 0 else 0
+
+            # Round up prediction
+            predicted_next_watering = datetime.date.today() + datetime.timedelta(days=int(days_until_dry))
+
+            plant_entry["predicted_next_watering"] = str(predicted_next_watering)
+            plant_entry["watering_plan"] = "Plan will update shortly based on forecast and sensor data."
+            st.session_state.plant_list.append(plant_entry)
+            
             # Determine watering volume by pot size
-            volume_ml = {
-                "Small (500ml)": 100,
-                "Medium (1L)": 200,
-                "Large (2L)": 400
-            }[pot_size]
+            # volume_ml = {
+            #    "Small (500ml)": 100,
+             #   "Medium (1L)": 200,
+            #    "Large (2L)": 400
+            #}[pot_size]
 
             # Smart logic
             if current_moisture < 30:
+                if days_since_watered < 1:
+                    water_advice = "Soil appears dry but was just watered. Monitor before watering again."
                 if avg_forecast_temp < 5:
                     water_advice = f"Soil is very dry and cold. Water lightly (~{int(volume_ml/2)}ml) and bring indoors."
                 elif avg_forecast_temp < 10:
@@ -376,3 +479,7 @@ with tab2:
             st.markdown(f"**Forecast Soil Moisture:** {avg_forecast_moisture:.2f} m³/m³")
             st.markdown(f"**Watering Advice:** {water_advice}")
             st.markdown(f"**Location Advice:** {location_advice}")
+            # Show watering plan under the Smart Recommendation
+            st.markdown("### Watering Plan")
+            st.markdown(plant_entry["watering_plan"])
+

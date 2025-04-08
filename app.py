@@ -302,8 +302,8 @@ with tab2:
                 st.markdown(f"- Days Since Watered: {plant['days_since_watered']} days")
                 st.markdown(f"- Soil Moisture: {plant['current_moisture']}%")
                 st.markdown(f"- Prognosed Moisture: {plant['prognosed_moisture']}%")
-                st.markdown(f"- Predicted Next Watering: {plant['predicted_next_watering']}")
-                st.markdown(f"- Watering Plan: {plant.get('watering_plan', 'N/A')}")
+                #st.markdown(f"- Predicted Next Watering: {plant['predicted_next_watering']}")
+                st.markdown(f"- Watering Plan: {plant.get('watering_plan', 'Plan will update shortly based on forecast and sensor data.')}")
                 #st.markdown(f"- Advice: {plant['water_advice']}")
                 st.markdown("---")
         else:
@@ -319,6 +319,8 @@ with tab2:
         avg_temp_3d = forecast_3d["temperature_2m"].mean()
         avg_humidity_3d = df["humidity"].mean() if "humidity" in df.columns else 50
         avg_soil_moisture = df["soil_moisture"].mean() if "soil_moisture" in df.columns else 30
+        rain_total = forecast_3d["rain"].sum() if "rain" in forecast_3d.columns else 0
+        forecast_days = 3
 
         # Define dynamic moisture targets based on plant types
         type_targets = {
@@ -328,21 +330,67 @@ with tab2:
             "Tropical": 70
         }
 
+        orientation_modifier = {
+            "North": 0.9,
+            "East": 1.0,
+            "West": 1.1,
+            "South": 1.2
+        }
+
         for plant in st.session_state.plant_list:
             target = type_targets.get(plant["plant_type"], 60)
             current = plant.get("current_moisture", avg_soil_moisture)
+            robustness = plant.get("robustness", 5)
+            buffer = (10 - robustness) * 0.5
 
-            if current < target - 20:
+            # Estimate moisture growth from forecasted rain and future soil moisture
+            future_soil_avg = forecast_3d[[
+                "soil_moisture_0_to_1cm",
+                "soil_moisture_1_to_3cm",
+                "soil_moisture_3_to_9cm"]].mean(axis=1).mean()
+
+            gain_per_day = (future_soil_avg * 100 - current) / forecast_days
+            gain_per_day *= orientation_modifier.get(plant["orientation"], 1.0)
+            rain_gain = rain_total * 0.5  # heuristically 0.5% per mm rain
+            #projected_moisture = max(0, min(100, current + gain_per_day * 5 + (rain_gain if rain_total > 0 else 0)))
+            projected_moisture = current + gain_per_day * 5 + (rain_gain if rain_total > 0 else 0)
+
+           # if current < target - (15 + buffer):
+              #  freq = "2x over the next 5 days"
+             #   reason = "significantly below optimal moisture"
+           # elif current < target - (5 + buffer):
+            #    freq = "1x in the next 4 days"
+            #    reason = "slightly below optimal moisture"
+           # elif current > target + (5 - buffer):
+           #     freq = "no watering needed — moisture is above ideal"
+           #     reason = "moisture exceeds tolerance"
+           # else:
+            #    freq = "1x next week"
+            #    reason = "within acceptable range"
+
+            if projected_moisture >= target - buffer:
+                freq = "no watering needed"
+                reason = "forecasted rain and soil moisture will meet plant needs"
+            elif current < target - (15 + buffer):
                 freq = "2x over the next 5 days"
-            elif current < target - 10:
+                reason = "significantly below optimal moisture"
+            elif current < target - (5 + buffer):
                 freq = "1x in the next 4 days"
+                reason = "slightly below optimal moisture"
             else:
                 freq = "1x next week"
+                reason = "within acceptable range"
 
             plan = f"Next 3-day avg temp: {avg_temp_3d:.1f}°C, humidity: {avg_humidity_3d:.1f}%. " \
                    f"Current soil moisture for {plant['name']} is {current:.1f}%. " \
                    f"Target for {plant['plant_type']} plants is ~{target}%. " \
-                   f"Suggest watering {freq}."
+                   f"Projected in 5 days: {projected_moisture:.1f}%. " \
+                   f"Suggest watering {freq} ({reason})."
+
+            #plan = f"Next 3-day avg temp: {avg_temp_3d:.1f}°C, humidity: {avg_humidity_3d:.1f}%. " \
+             #      f"Current soil moisture for {plant['name']} is {current:.1f}%. " \
+              #     f"Target for {plant['plant_type']} plants is ~{target}%. " \
+               #    f"Suggest watering {freq} ({reason})."
 
             plant["watering_plan"] = plan
 
@@ -355,7 +403,8 @@ with tab2:
         pot_size = st.selectbox("Pot Size", ["Small (500ml)", "Medium (1L)", "Large (2L)"])
         orientation = st.selectbox("Facing Direction", ["North", "East", "South", "West"])
         plant_type = st.selectbox("Plant Environment", ["Indoor", "Outdoor", "Desert", "Tropical"])
-        robustness = st.slider("Plant Robustness (1-10)", 1, 10)
+        default_robustness = {"Indoor": 5, "Outdoor": 6, "Desert": 9, "Tropical": 3}
+        robustness = st.slider("Plant Robustness (1-10)", 1, 10, value=default_robustness[plant_type])
         time_of_day = st.selectbox("Time of Day", ["Morning", "Afternoon", "Evening", "Night"])
         last_watered = st.date_input("Last Watered", datetime.date.today())
         days_since_watered = (datetime.date.today() - last_watered).days
@@ -437,8 +486,10 @@ with tab2:
 
             plant_entry["predicted_next_watering"] = str(predicted_next_watering)
             plant_entry["watering_plan"] = "Plan will update shortly based on forecast and sensor data."
-            st.session_state.plant_list.append(plant_entry)
-            
+
+            if not any(p["name"] == plant_name and p["last_watered"] == str(last_watered) for p in st.session_state.plant_list):
+                st.session_state.plant_list.append(plant_entry)
+
             # Determine watering volume by pot size
             # volume_ml = {
             #    "Small (500ml)": 100,

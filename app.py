@@ -369,7 +369,7 @@ with tab2:
             projected_moisture, daily_change = estimate_moisture_change(
                 forecast_list=forecast_soil,
                 current=current,
-                days=5,
+                days=3,
                 rain_mm=rain_total,
                 orientation=plant["orientation"]
             )

@@ -374,31 +374,6 @@ with tab2:
                 orientation=plant["orientation"]
             )
 
-            # Estimate moisture growth from forecasted rain and future soil moisture
-            #future_soil_avg = forecast_3d[[
-              #  "soil_moisture_0_to_1cm",
-              #  "soil_moisture_1_to_3cm",
-              #  "soil_moisture_3_to_9cm"]].mean(axis=1).mean()
-
-          #  gain_per_day = (future_soil_avg * 100 - current) / forecast_days
-          #  gain_per_day *= orientation_modifier.get(plant["orientation"], 1.0)
-          #  rain_gain = rain_total * 0.5  # heuristically 0.5% per mm rain
-            #projected_moisture = max(0, min(100, current + gain_per_day * 5 + (rain_gain if rain_total > 0 else 0)))
-           # projected_moisture = current + gain_per_day * 5 + (rain_gain if rain_total > 0 else 0)
-
-           # if current < target - (15 + buffer):
-              #  freq = "2x over the next 5 days"
-             #   reason = "significantly below optimal moisture"
-           # elif current < target - (5 + buffer):
-            #    freq = "1x in the next 4 days"
-            #    reason = "slightly below optimal moisture"
-           # elif current > target + (5 - buffer):
-           #     freq = "no watering needed — moisture is above ideal"
-           #     reason = "moisture exceeds tolerance"
-           # else:
-            #    freq = "1x next week"
-            #    reason = "within acceptable range"
-
             if projected_moisture >= target - buffer:
                 freq = "no watering needed"
                 reason = "forecasted rain and soil moisture will meet plant needs"
@@ -413,15 +388,11 @@ with tab2:
                 reason = "within acceptable range"
 
             plan = f"Next 3-day avg temp: {avg_temp_3d:.1f}°C, humidity: {avg_humidity_3d:.1f}%. " \
+                   f"Expected rainfall: {rain_total:.1f} mm. " \
                    f"Current soil moisture for {plant['name']} is {current:.1f}%. " \
                    f"Target for {plant['plant_type']} plants is ~{target}%. " \
                    f"Projected in 5 days: {projected_moisture:.1f}% (≈ {daily_change:+.2f}%/day). " \
                    f"Suggest watering {freq} ({reason})."
-
-            #plan = f"Next 3-day avg temp: {avg_temp_3d:.1f}°C, humidity: {avg_humidity_3d:.1f}%. " \
-             #      f"Current soil moisture for {plant['name']} is {current:.1f}%. " \
-              #     f"Target for {plant['plant_type']} plants is ~{target}%. " \
-               #    f"Suggest watering {freq} ({reason})."
 
             plant["watering_plan"] = plan
 
@@ -506,6 +477,8 @@ with tab2:
                 "soil_moisture_3_to_9cm"
             ]].mean(axis=1).mean()
 
+            rain_12h = forecast_12h["rain"].sum() if "rain" in forecast_12h.columns else 0
+
             # Predictive watering logic
             # Estimate decay rate based on temp & humidity
             decay_factor = (avg_forecast_temp / 30) * (1 - latest["humidity"] / 100)
@@ -520,13 +493,6 @@ with tab2:
 
             if not any(p["name"] == plant_name and p["last_watered"] == str(last_watered) for p in st.session_state.plant_list):
                 st.session_state.plant_list.append(plant_entry)
-
-            # Determine watering volume by pot size
-            # volume_ml = {
-            #    "Small (500ml)": 100,
-             #   "Medium (1L)": 200,
-            #    "Large (2L)": 400
-            #}[pot_size]
 
             # Smart logic
             if current_moisture < 30:
@@ -558,6 +524,7 @@ with tab2:
             st.markdown("### Smart Recommendation")
             st.markdown(f"**Soil Moisture Now:** {current_moisture:.1f}%")
             st.markdown(f"**Avg Forecast Temp (12h):** {avg_forecast_temp:.1f}°C")
+            st.markdown(f"**Expected Rainfall (Next 12h):** {rain_12h:.1f} mm")
             st.markdown(f"**Forecast Soil Moisture:** {avg_forecast_moisture:.2f} m³/m³")
             st.markdown(f"**Watering Advice:** {water_advice}")
             st.markdown(f"**Location Advice:** {location_advice}")
